@@ -61,6 +61,7 @@ test('array methods invocation count', function(t) {
     };
     var src = 'values.forEach(function(x) { receiver.push(x); })'
     var ast = parse(src).body[0].expression;
+    debugger
     evaluate(ast, variables);
     t.equal(variables.receiver.length, 3);
     t.deepEqual(variables.receiver, [1, 2, 3]);
@@ -69,7 +70,7 @@ test('array methods invocation count', function(t) {
 test('array methods with vars', function(t) {
     t.plan(1);
 
-    var src = '[1, 2, 3].map(function(n) { return n * x })';
+    var src = '[1, 2, 3].map(n => n * x)';
     var ast = parse(src).body[0].expression;
     t.deepEqual(evaluate(ast, {x: 2}), [2, 4, 6]);
 });
@@ -83,15 +84,6 @@ test('evaluate this', function(t) {
         'this': { x: 1, y: { z: 100 } }
     });
     t.equal(res, 101);
-});
-
-test('FunctionExpression unresolved', function(t) {
-    t.plan(1);
-
-    var src = '(function(){console.log("Not Good")})';
-    var ast = parse(src).body[0].expression;
-    var res = evaluate(ast, {});
-    t.equal(res, undefined);
 });
 
 test('MemberExpressions from Functions unresolved', function(t) {

@@ -1,17 +1,15 @@
-var unparse = require('escodegen').generate;
-
-module.exports = function (ast, vars, opts) {
-    if(!opts) opts = {};
+module.exports = function evaluate (ast, vars, opts) {
+    if (!opts) opts = {};
     var rejectAccessToMethodsOnFunctions = !opts.allowAccessToMethodsOnFunctions;
 
     if (!vars) vars = {};
     var FAIL = {};
 
-    var result = (function walk (node, noExecute) {
+    var result = (function walk(node, noExecute) {
         if (node.type === 'Literal') {
             return node.value;
         }
-        else if (node.type === 'UnaryExpression'){
+        else if (node.type === 'UnaryExpression') {
             var val = walk(node.argument, noExecute)
             if (node.operator === '+') return +val
             if (node.operator === '-') return -val
@@ -35,14 +33,14 @@ module.exports = function (ast, vars, opts) {
                 var value = prop.value === null
                     ? prop.value
                     : walk(prop.value, noExecute)
-                ;
+                    ;
                 if (value === FAIL) return FAIL;
                 obj[prop.key.value || prop.key.name] = value;
             }
             return obj;
         }
         else if (node.type === 'BinaryExpression' ||
-                 node.type === 'LogicalExpression') {
+            node.type === 'LogicalExpression') {
             var op = node.operator;
 
             if (op === '&&') {
@@ -122,9 +120,9 @@ module.exports = function (ast, vars, opts) {
         }
         else if (node.type === 'MemberExpression') {
             var obj = walk(node.object, noExecute);
-            if((obj === FAIL) || (
+            if ((obj === FAIL) || (
                 (typeof obj == 'function') && rejectAccessToMethodsOnFunctions
-            )){
+            )) {
                 return FAIL;
             }
             if (node.property.type === 'Identifier' && !node.computed) {
@@ -150,34 +148,15 @@ module.exports = function (ast, vars, opts) {
             return walk(node.argument, noExecute)
         }
         else if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
-            var bodies = node.body.body || [node.body];
+            return (...params) => {
+                const newVars = Object.assign({}, vars)
+                node.params.forEach((param, i) => {
+                    newVars[param.name] = params[i]
+                })
 
-            // Create a "scope" for our arguments
-            var oldVars = {};
-            Object.keys(vars).forEach(function(element){
-                oldVars[element] = vars[element];
-            })
-
-            for(var i=0; i<node.params.length; i++){
-                var key = node.params[i];
-                if(key.type == 'Identifier'){
-                  vars[key.name] = null;
-                }
-                else return FAIL;
+                return evaluate(node.body, newVars)
             }
-            for(var i in bodies){
-                if(walk(bodies[i], true) === FAIL){
-                    return FAIL;
-                }
-            }
-            // restore the vars and scope after we walk
-            vars = oldVars;
 
-            var keys = Object.keys(vars);
-            var vals = keys.map(function(key) {
-                return vars[key];
-            });
-            return Function(keys.join(', '), 'return ' + unparse(node)).apply(null, vals);
         }
         else if (node.type === 'TemplateLiteral') {
             var str = '';
@@ -198,10 +177,24 @@ module.exports = function (ast, vars, opts) {
         else if (node.type === 'TemplateElement') {
             return node.value.cooked;
         }
-        else return FAIL;
+        else if (node.type === 'BlockStatement') {
+            for (var i = 0; i < node.body.length; i++) {
+                var result = walk(node.body[i], noExecute)
+                if (result === FAIL) return FAIL;
+                if (node.body[i].type === 'ReturnStatement') return result;
+            }
+        }
+        else {
+            FAIL.why = 'Unknown node type: ' + node.type;
+            return FAIL;
+        }
     })(ast);
 
-    return result === FAIL ? undefined : result;
+    if (result === FAIL) {
+        return undefined;
+    }
+
+    return result;
 };
 
 function isUnsafeProperty(name) {
